@@ -1,4 +1,5 @@
 use clap::{Args, Parser, Subcommand};
+use rusb::UsbContext;
 use std::{error::Error, time::Duration};
 
 const MIN_BRIGHTNESS: u16 = 400;
@@ -62,26 +63,18 @@ fn get_request_data(nits: u16) -> [u8; 7] {
     return result;
 }
 
-fn get_studio_display(ctx: &libusb::Context) -> Result<libusb::Device, Box<dyn Error>> {
-    let usb_devices = ctx.devices()?;
-    for device in usb_devices.iter() {
-        let device_desc = device.device_descriptor()?;
-        if device_desc.product_id() == SD_PRODUCT_ID && device_desc.vendor_id() == SD_VENDOR_ID {
-            return Ok(device);
-        }
-    }
-    return Err("No Apple Studio Display connected".into());
-}
-
-fn set_brightness(dev: &libusb::Device, nits: u16) -> Result<(), Box<dyn Error>> {
+fn set_brightness(ctx: &rusb::Context, nits: u16) -> Result<(), Box<dyn Error>> {
     let buffer = get_request_data(nits);
-    let mut handle = dev.open()?;
+    let handle = match ctx.open_device_with_vid_pid(SD_VENDOR_ID, SD_PRODUCT_ID) {
+        Some(v) => v,
+        None => Err("No Apple Studio Display connected")?
+    };
     handle.detach_kernel_driver(SD_BRIGHTNESS_INTERFACE)?;
     handle.claim_interface(SD_BRIGHTNESS_INTERFACE)?;
-    let request_type = libusb::request_type(
-        libusb::Direction::Out,
-        libusb::RequestType::Class,
-        libusb::Recipient::Interface,
+    let request_type = rusb::request_type(
+        rusb::Direction::Out,
+        rusb::RequestType::Class,
+        rusb::Recipient::Interface,
     );
     handle.write_control(
         request_type,                   // bmRequestType
@@ -96,15 +89,18 @@ fn set_brightness(dev: &libusb::Device, nits: u16) -> Result<(), Box<dyn Error>>
     Ok(())
 }
 
-fn get_brightness(dev: &libusb::Device) -> Result<u16, Box<dyn Error>> {
+fn get_brightness(ctx: &rusb::Context) -> Result<u16, Box<dyn Error>> {
     let mut buffer: [u8; 7] = [0; 7];
-    let mut handle = dev.open()?;
+    let handle = match ctx.open_device_with_vid_pid(SD_VENDOR_ID, SD_PRODUCT_ID) {
+        Some(v) => v,
+        None => Err("No Apple Studio Display connected")?
+    };
     handle.detach_kernel_driver(SD_BRIGHTNESS_INTERFACE)?;
     handle.claim_interface(SD_BRIGHTNESS_INTERFACE)?;
-    let request_type = libusb::request_type(
-        libusb::Direction::In,
-        libusb::RequestType::Class,
-        libusb::Recipient::Interface,
+    let request_type = rusb::request_type(
+        rusb::Direction::In,
+        rusb::RequestType::Class,
+        rusb::Recipient::Interface,
     );
     handle.read_control(
         request_type,                   // bmRequestType
@@ -122,8 +118,7 @@ fn get_brightness(dev: &libusb::Device) -> Result<u16, Box<dyn Error>> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli_args = Cli::parse();
-    let ctx = libusb::Context::new()?;
-    let studio_display = get_studio_display(&ctx)?;
+    let ctx = rusb::Context::new()?;
 
     match &cli_args.command {
         Commands::Set(set_args) => {
@@ -131,10 +126,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             if cli_args.verbose.unwrap_or_default() {
                 println!("Setting brightness to: {}", nits);
             }
-            set_brightness(&studio_display, nits)?;
+            set_brightness(&ctx, nits)?;
         }
         Commands::Get => {
-            let nits = get_brightness(&studio_display)?;
+            let nits = get_brightness(&ctx)?;
             println!("Brightness is set to: {}", nits);
         }
     }
