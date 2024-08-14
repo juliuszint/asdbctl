@@ -67,7 +67,7 @@ fn set_brightness(ctx: &rusb::Context, nits: u16) -> Result<(), Box<dyn Error>> 
     let buffer = get_request_data(nits);
     let handle = match ctx.open_device_with_vid_pid(SD_VENDOR_ID, SD_PRODUCT_ID) {
         Some(v) => v,
-        None => Err("No Apple Studio Display connected")?
+        None => Err("No Apple Studio Display connected")?,
     };
     handle.detach_kernel_driver(SD_BRIGHTNESS_INTERFACE)?;
     handle.claim_interface(SD_BRIGHTNESS_INTERFACE)?;
@@ -93,7 +93,7 @@ fn get_brightness(ctx: &rusb::Context) -> Result<u16, Box<dyn Error>> {
     let mut buffer: [u8; 7] = [0; 7];
     let handle = match ctx.open_device_with_vid_pid(SD_VENDOR_ID, SD_PRODUCT_ID) {
         Some(v) => v,
-        None => Err("No Apple Studio Display connected")?
+        None => Err("No Apple Studio Display connected")?,
     };
     handle.detach_kernel_driver(SD_BRIGHTNESS_INTERFACE)?;
     handle.claim_interface(SD_BRIGHTNESS_INTERFACE)?;
@@ -116,9 +116,24 @@ fn get_brightness(ctx: &rusb::Context) -> Result<u16, Box<dyn Error>> {
     Ok(u16::from_le_bytes(nit_bytes))
 }
 
+#[link(name = "c")]
+extern "C" {
+    fn geteuid() -> u32;
+}
+
+fn check_root() {
+    unsafe {
+        if geteuid() != 0 {
+            println!("[ WARN ] Running without root. This will not work without udev rules!");
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let cli_args = Cli::parse();
     let ctx = rusb::Context::new()?;
+
+    check_root();
 
     match &cli_args.command {
         Commands::Set(set_args) => {
