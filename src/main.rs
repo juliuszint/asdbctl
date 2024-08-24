@@ -1,153 +1,127 @@
-use clap::{Args, Parser, Subcommand};
-use rusb::UsbContext;
-use std::{error::Error, time::Duration};
+use clap::{arg, Command};
+use hidapi::{self, HidApi};
+use regex::Regex;
+use std::{error::Error, ffi::CString, string::String, vec::Vec};
 
-const MIN_BRIGHTNESS: u16 = 400;
-const MAX_BRIGHTNESS: u16 = 60000;
+const REPORT_ID: u8 = 1;
 
-const _HID_REPORT_TYPE_INPUT: u16 = 0x0100;
-const _HID_REPORT_TYPE_OUTPUT: u16 = 0x0200;
-const HID_REPORT_TYPE_FEATURE: u16 = 0x0300;
+const MIN_BRIGHTNESS: u32 = 400;
+const MAX_BRIGHTNESS: u32 = 60000;
+const BRIGHTNESS_RANGE: u32 = MAX_BRIGHTNESS - MIN_BRIGHTNESS;
 
-const HID_GET_REPORT: u8 = 0x01;
-const HID_SET_REPORT: u8 = 0x09;
-
-const SD_BRIGHTNESS_INTERFACE: u8 = 0x7;
-const SD_PRODUCT_ID: u16 = 0x1114;
-const SD_VENDOR_ID: u16 = 0x05ac;
-
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-#[command(propagate_version = true)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-    /// Display verbose information
-    verbose: Option<bool>,
+fn get_brightness(handle: &mut hidapi::HidDevice) -> Result<u32, Box<dyn Error>> {
+    let mut buf = Vec::with_capacity(7); // report id, 4 bytes brightness, 2 bytes unknown
+    buf.push(REPORT_ID);
+    buf.extend(0_u32.to_le_bytes());
+    buf.extend(0_u16.to_le_bytes());
+    let size = handle.get_feature_report(&mut buf)?;
+    if size != buf.len() {
+        Err(format!(
+            "Get HID feature report: Expected a size of {}, got {}",
+            buf.len(),
+            size
+        ))?
+    }
+    let brightness = u32::from_le_bytes(buf[1..5].try_into()?);
+    return Ok(brightness);
 }
 
-#[derive(Subcommand)]
-enum Commands {
-    /// Get and display the current brightness level
-    Get,
-    /// Set the brightness level
-    Set(SetCommandArgs),
+fn get_brightness_percent(handle: &mut hidapi::HidDevice) -> Result<u8, Box<dyn Error>> {
+    let value = (get_brightness(handle)? - MIN_BRIGHTNESS) as f32;
+    let value_percent = (value / BRIGHTNESS_RANGE as f32 * 100.0) as u8;
+    return Ok(value_percent);
 }
 
-fn percent(input: &str) -> Result<u8, String> {
-    clap_num::number_range(input, 0, 100)
-}
-
-#[derive(Args)]
-struct SetCommandArgs {
-    /// Brightness level in percent 0-100
-    #[clap(value_parser=percent)]
-    brightness: u8,
-}
-
-fn percent_to_nits(brightness_percent: u8) -> u16 {
-    let factor = brightness_percent as f32 / 100.0;
-    let brightness_range = MAX_BRIGHTNESS - MIN_BRIGHTNESS;
-    let brightness_value = MIN_BRIGHTNESS + (brightness_range as f32 * factor) as u16;
-    return brightness_value;
-}
-
-fn get_request_data(nits: u16) -> [u8; 7] {
-    let mut result: [u8; 7] = [0; 7];
-    let le_bytes = nits.to_le_bytes();
-    result[0] = 0x01;
-    result[1] = le_bytes[0];
-    result[2] = le_bytes[1];
-    //let result = [ 0x01, 0x90, 0x01, 0x00, 0x00, 0x00, 0x00 ]; // min value
-    //let result = [ 0x01, 0x60, 0xea, 0x00, 0x00, 0x00, 0x00 ]; // max value
-    return result;
-}
-
-fn set_brightness(ctx: &rusb::Context, nits: u16) -> Result<(), Box<dyn Error>> {
-    let buffer = get_request_data(nits);
-    let handle = match ctx.open_device_with_vid_pid(SD_VENDOR_ID, SD_PRODUCT_ID) {
-        Some(v) => v,
-        None => Err("No Apple Studio Display connected")?,
-    };
-    handle.detach_kernel_driver(SD_BRIGHTNESS_INTERFACE)?;
-    handle.claim_interface(SD_BRIGHTNESS_INTERFACE)?;
-    let request_type = rusb::request_type(
-        rusb::Direction::Out,
-        rusb::RequestType::Class,
-        rusb::Recipient::Interface,
-    );
-    handle.write_control(
-        request_type,                   // bmRequestType
-        HID_SET_REPORT,                 // bRequest
-        HID_REPORT_TYPE_FEATURE | 0x01, // wValue        HID - Report Type and Report ID
-        SD_BRIGHTNESS_INTERFACE.into(), // wIndex        HID - Interface
-        &buffer,
-        Duration::from_secs(1),
-    )?;
-    handle.release_interface(SD_BRIGHTNESS_INTERFACE)?;
-    handle.attach_kernel_driver(SD_BRIGHTNESS_INTERFACE)?;
+fn set_brightness(handle: &mut hidapi::HidDevice, brightness: u32) -> Result<(), Box<dyn Error>> {
+    let mut buf = Vec::with_capacity(7); // report id, 4 bytes brightness, 2 bytes unknown
+    buf.push(REPORT_ID);
+    buf.extend(brightness.to_le_bytes());
+    buf.extend(0_u16.to_le_bytes());
+    handle.send_feature_report(&mut buf)?;
     Ok(())
 }
 
-fn get_brightness(ctx: &rusb::Context) -> Result<u16, Box<dyn Error>> {
-    let mut buffer: [u8; 7] = [0; 7];
-    let handle = match ctx.open_device_with_vid_pid(SD_VENDOR_ID, SD_PRODUCT_ID) {
-        Some(v) => v,
-        None => Err("No Apple Studio Display connected")?,
-    };
-    handle.detach_kernel_driver(SD_BRIGHTNESS_INTERFACE)?;
-    handle.claim_interface(SD_BRIGHTNESS_INTERFACE)?;
-    let request_type = rusb::request_type(
-        rusb::Direction::In,
-        rusb::RequestType::Class,
-        rusb::Recipient::Interface,
-    );
-    handle.read_control(
-        request_type,                   // bmRequestType
-        HID_GET_REPORT,                 // bRequest
-        HID_REPORT_TYPE_FEATURE | 0x01, // wValue        HID - Report Type and Report ID
-        SD_BRIGHTNESS_INTERFACE.into(), // wIndex        HID - Interface
-        &mut buffer,
-        Duration::from_secs(1),
-    )?;
-    handle.release_interface(SD_BRIGHTNESS_INTERFACE)?;
-    handle.attach_kernel_driver(SD_BRIGHTNESS_INTERFACE)?;
-    let nit_bytes: [u8; 2] = [buffer[1], buffer[2]];
-    Ok(u16::from_le_bytes(nit_bytes))
+fn set_brightness_percent(
+    handle: &mut hidapi::HidDevice,
+    brightness: u8,
+) -> Result<(), Box<dyn Error>> {
+    let nits =
+        (((brightness as f32 / 100.0) * BRIGHTNESS_RANGE as f32) + MIN_BRIGHTNESS as f32) as u32;
+    let nits = std::cmp::min(nits, MAX_BRIGHTNESS);
+    let nits = std::cmp::max(nits, MIN_BRIGHTNESS);
+    set_brightness(handle, nits)?;
+    Ok(())
 }
 
-#[link(name = "c")]
-extern "C" {
-    fn geteuid() -> u32;
-}
-
-fn check_root() {
-    unsafe {
-        if geteuid() != 0 {
-            println!("[ WARN ] Running without root. This will not work without udev rules!");
+fn list_displays() -> Result<Vec<String>, Box<dyn Error>> {
+    let mut result = Vec::new();
+    let re = Regex::new(r"asdbl-[0-9A-F]{8}-[0-9A-F]{16}$")?;
+    let entries = std::fs::read_dir("/dev/")?;
+    for e in entries {
+        let path = e?.path();
+        let path_str = path.to_str().unwrap();
+        if re.is_match(path_str) {
+            result.push(path_str.to_owned())
         }
     }
+    return Ok(result);
+}
+
+#[rustfmt::skip]
+fn cli() -> Command {
+    Command::new("asdbctl")
+        .about("Tool to get or set the brightness for Apple Studio Displays")
+        .subcommand_required(true)
+        .subcommand(
+            Command::new("get")
+                .about("Get the current brightness in %")
+        )
+        .subcommand(
+            Command::new("set")
+                .about("Set the current brightness in %")
+                .arg(
+                    arg!(<BRIGHTNESS> "The remote to target")
+                    .value_parser(clap::value_parser!(u8).range(0..100)))
+                .arg_required_else_help(true),
+        )
+        .subcommand(
+            Command::new("udev")
+                .about("Show the required UDEV rule")
+        )
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let cli_args = Cli::parse();
-    let ctx = rusb::Context::new()?;
-
-    check_root();
-
-    match &cli_args.command {
-        Commands::Set(set_args) => {
-            let nits = percent_to_nits(set_args.brightness);
-            if cli_args.verbose.unwrap_or_default() {
-                println!("Setting brightness to: {}", nits);
-            }
-            set_brightness(&ctx, nits)?;
-        }
-        Commands::Get => {
-            let nits = get_brightness(&ctx)?;
-            println!("Brightness is set to: {}", nits);
-        }
+    let program_name = cli().get_name().to_owned();
+    let matches = cli().get_matches();
+    let displays = list_displays()?;
+    if displays.len() <= 0 {
+        println!(
+            "No Apple Studio Display found. Checkout {} udev for help",
+            program_name
+        );
+        return Err("No Apple Studio Display found")?;
     }
-
+    let display = displays.first().unwrap().as_str();
+    let dev_path = CString::new(display)?;
+    let hapi = HidApi::new_without_enumerate()?;
+    let mut handle = hapi.open_path(&dev_path)?;
+    match matches.subcommand() {
+        Some(("get", _)) => {
+            let brightness = get_brightness_percent(&mut handle)?;
+            println!("brightness {}", brightness);
+        }
+        Some(("set", sub_matches)) => {
+            let brightness = *sub_matches.get_one::<u8>("BRIGHTNESS").expect("required");
+            set_brightness_percent(&mut handle, brightness)?;
+        }
+        Some(("udev", _)) => {
+            println!(
+                "{} requires the following udev rule to work properly",
+                program_name
+            );
+            println!("'SUBSYSTEM==\"hidraw\", DEVPATH==\"*:1.7/[0-9][0-9][0-9][0-9]:05AC:1114.[0-9][0-9][0-9][0-9]/*\", ATTRS{{idVendor}}==\"05ac\", ATTRS{{idProduct}}==\"1114\", MODE=\"0660\", TAG+=\"uaccess\", SYMLINK+=\"asdbl-%s{{serial}}\"'")
+        }
+        _ => unreachable!(),
+    }
     return Ok(());
 }
