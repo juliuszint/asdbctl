@@ -81,7 +81,7 @@ fn cli() -> Command {
                 .about("Set the current brightness in %")
                 .arg(
                     arg!(<BRIGHTNESS> "The remote to target")
-                    .value_parser(clap::value_parser!(u8).range(0..100)))
+                    .value_parser(clap::value_parser!(u8).range(0..101)))
                 .arg_required_else_help(true),
         )
         .subcommand(
@@ -90,7 +90,7 @@ fn cli() -> Command {
                     arg!(-s --step <STEP> "Step size in percent")
                     .required(false)
                     .default_value("10")
-                    .value_parser(clap::value_parser!(u8).range(1..100)))
+                    .value_parser(clap::value_parser!(u8).range(1..101)))
                 .about("Increase the brightness")
         )
         .subcommand(
@@ -99,7 +99,7 @@ fn cli() -> Command {
                     arg!(-s --step <STEP> "Step size in percent")
                     .required(false)
                     .default_value("10")
-                    .value_parser(clap::value_parser!(u8).range(1..100)))
+                    .value_parser(clap::value_parser!(u8).range(1..101)))
                 .about("Decrease the brightness")
         )
         .subcommand(
