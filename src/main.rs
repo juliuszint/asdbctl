@@ -85,6 +85,24 @@ fn cli() -> Command {
                 .arg_required_else_help(true),
         )
         .subcommand(
+            Command::new("up")
+                .arg(
+                    arg!(-s --step <STEP> "Step size in percent")
+                    .required(false)
+                    .default_value("10")
+                    .value_parser(clap::value_parser!(u8).range(1..100)))
+                .about("Increase the brightness")
+        )
+        .subcommand(
+            Command::new("down")
+                .arg(
+                    arg!(-s --step <STEP> "Step size in percent")
+                    .required(false)
+                    .default_value("10")
+                    .value_parser(clap::value_parser!(u8).range(1..100)))
+                .about("Decrease the brightness")
+        )
+        .subcommand(
             Command::new("udev")
                 .about("Show the required UDEV rule")
         )
@@ -113,6 +131,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(("set", sub_matches)) => {
             let brightness = *sub_matches.get_one::<u8>("BRIGHTNESS").expect("required");
             set_brightness_percent(&mut handle, brightness)?;
+        }
+        Some(("up", sub_matches)) => {
+            let step = *sub_matches.get_one::<u8>("step").expect("required");
+            let brightness = get_brightness_percent(&mut handle)?;
+            let new_brightness = std::cmp::min(100, brightness + step);
+            set_brightness_percent(&mut handle, new_brightness)?;
+        }
+        Some(("down", sub_matches)) => {
+            let step = *sub_matches.get_one::<u8>("step").expect("required");
+            let brightness = get_brightness_percent(&mut handle)?;
+            let new_brightness = std::cmp::min(100, brightness - step);
+            set_brightness_percent(&mut handle, new_brightness)?;
         }
         Some(("udev", _)) => {
             println!(
