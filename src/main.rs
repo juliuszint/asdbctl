@@ -9,6 +9,10 @@ const MIN_BRIGHTNESS: u32 = 400;
 const MAX_BRIGHTNESS: u32 = 60000;
 const BRIGHTNESS_RANGE: u32 = MAX_BRIGHTNESS - MIN_BRIGHTNESS;
 
+const STUDIO_DISPLAY_PRODUCT_ID: u16 = 0x1114;
+const STUDIO_DISPLAY_VENDOR_ID: u16 = 0x05ac;
+const STUDIO_DISPLAY_INTERFACE_NR: i32 = 0x7;
+
 fn get_brightness(handle: &mut hidapi::HidDevice) -> Result<u32, Box<dyn Error>> {
     let mut buf = Vec::with_capacity(7); // report id, 4 bytes brightness, 2 bytes unknown
     buf.push(REPORT_ID);
@@ -67,6 +71,23 @@ fn list_displays() -> Result<Vec<String>, Box<dyn Error>> {
     return Ok(result);
 }
 
+fn list_displays_hapi(hapi: &HidApi) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut result = Vec::new();
+    for d in hapi.device_list() {
+        if d.vendor_id() != STUDIO_DISPLAY_VENDOR_ID {
+            continue
+        }
+        if d.product_id() != STUDIO_DISPLAY_PRODUCT_ID {
+            continue
+        }
+        if d.interface_number() != STUDIO_DISPLAY_INTERFACE_NR {
+            continue
+        }
+        result.push(d.path().to_str()?.to_string())
+    }
+    return Ok(result);
+}
+
 #[rustfmt::skip]
 fn cli() -> Command {
     Command::new("asdbctl")
@@ -111,7 +132,15 @@ fn cli() -> Command {
 fn main() -> Result<(), Box<dyn Error>> {
     let program_name = cli().get_name().to_owned();
     let matches = cli().get_matches();
-    let displays = list_displays()?;
+    let mut displays = list_displays()?;
+    let hapi = if displays.len() > 0 {
+         HidApi::new_without_enumerate()?
+    } else {
+         HidApi::new()?
+    };
+    if displays.len() <= 0 {
+        displays = list_displays_hapi(&hapi)?;
+    }
     if displays.len() <= 0 {
         println!(
             "No Apple Studio Display found. Checkout {} udev for help",
@@ -121,7 +150,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let display = displays.first().unwrap().as_str();
     let dev_path = CString::new(display)?;
-    let hapi = HidApi::new_without_enumerate()?;
     let mut handle = hapi.open_path(&dev_path)?;
     match matches.subcommand() {
         Some(("get", _)) => {
