@@ -6,11 +6,11 @@ Studio Displays from Linux.
 
 Getting started
 ---------------
-The following udev rule needs to be present and triggerd:
+The following udev rule should to be present and triggerd:
 
 .. code-block:: udev
 
-    SUBSYSTEM=="hidraw", DEVPATH=="*:1.7/[0-9][0-9][0-9][0-9]:05AC:1114.[0-9][0-9][0-9][0-9]/*", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1114", MODE="0660", TAG+="uaccess", SYMLINK+="asdbl-%s{serial}"
+    SUBSYSTEM=="hidraw", DEVPATH=="*:1.7/????:05AC:1114.????/*", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1114", MODE="0660", TAG+="uaccess", SYMLINK+="asdbl-%s{serial}"
 
 Use this command to create it on your system. Reboot your system and if your
 Studio Display is connected, you should find a symlink under `/dev/` with the
@@ -18,7 +18,7 @@ prefix ``asdbl-`` and the serial number of your display.
 
 .. code-block:: bash
 
-   echo 'SUBSYSTEM=="hidraw", DEVPATH=="*:1.7/[0-9][0-9][0-9][0-9]:05AC:1114.[0-9][0-9][0-9][0-9]/*", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1114", MODE="0660", TAG+="uaccess", SYMLINK+="asdbl-%s{serial}"' | sudo tee /etc/udev/rules.d/20-asd-backlight.rules
+   echo 'SUBSYSTEM=="hidraw", DEVPATH=="*:1.7/????:05AC:1114.????/*", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1114", MODE="0660", TAG+="uaccess", SYMLINK+="asdbl-%s{serial}"' | sudo tee /etc/udev/rules.d/20-asd-backlight.rules
 
 The software is written in Rust and uses `hidapi` in the background. There are
 no binary releases, which means you will need to install Rust (or rewrite it in
