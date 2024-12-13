@@ -1,7 +1,6 @@
 use clap::{arg, Command};
 use hidapi::{self, HidApi};
-use regex::Regex;
-use std::{error::Error, ffi::CString, string::String, vec::Vec};
+use std::{error::Error, vec::Vec};
 
 const REPORT_ID: u8 = 1;
 
@@ -9,9 +8,9 @@ const MIN_BRIGHTNESS: u32 = 400;
 const MAX_BRIGHTNESS: u32 = 60000;
 const BRIGHTNESS_RANGE: u32 = MAX_BRIGHTNESS - MIN_BRIGHTNESS;
 
-const STUDIO_DISPLAY_PRODUCT_ID: u16 = 0x1114;
-const STUDIO_DISPLAY_VENDOR_ID: u16 = 0x05ac;
-const STUDIO_DISPLAY_INTERFACE_NR: i32 = 0x7;
+const SD_PRODUCT_ID: u16 = 0x1114;
+const SD_VENDOR_ID: u16 = 0x05ac;
+const SD_INTERFACE_NR: i32 = 0x7;
 
 fn get_brightness(handle: &mut hidapi::HidDevice) -> Result<u32, Box<dyn Error>> {
     let mut buf = Vec::with_capacity(7); // report id, 4 bytes brightness, 2 bytes unknown
@@ -57,35 +56,15 @@ fn set_brightness_percent(
     Ok(())
 }
 
-fn list_displays() -> Result<Vec<String>, Box<dyn Error>> {
-    let mut result = Vec::new();
-    let re = Regex::new(r"asdbl-[0-9A-F]{8}-[0-9A-F]{16}$")?;
-    let entries = std::fs::read_dir("/dev/")?;
-    for e in entries {
-        let path = e?.path();
-        let path_str = path.to_str().unwrap();
-        if re.is_match(path_str) {
-            result.push(path_str.to_owned())
-        }
-    }
-    return Ok(result);
-}
-
-fn list_displays_hapi(hapi: &HidApi) -> Result<Vec<String>, Box<dyn Error>> {
-    let mut result = Vec::new();
-    for d in hapi.device_list() {
-        if d.vendor_id() != STUDIO_DISPLAY_VENDOR_ID {
-            continue;
-        }
-        if d.product_id() != STUDIO_DISPLAY_PRODUCT_ID {
-            continue;
-        }
-        if d.interface_number() != STUDIO_DISPLAY_INTERFACE_NR {
-            continue;
-        }
-        result.push(d.path().to_str()?.to_string())
-    }
-    return Ok(result);
+fn studio_displays(hapi: &HidApi) -> Result<Vec<&hidapi::DeviceInfo>, Box<dyn Error>> {
+    return Ok(hapi
+        .device_list()
+        .filter(|x| {
+            x.product_id() == SD_PRODUCT_ID
+                && x.vendor_id() == SD_VENDOR_ID
+                && x.interface_number() == SD_INTERFACE_NR
+        })
+        .collect());
 }
 
 fn cli() -> Command {
@@ -126,21 +105,13 @@ fn cli() -> Command {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let matches = cli().get_matches();
-    let mut displays = list_displays()?;
-    let hapi = if displays.len() > 0 {
-        HidApi::new_without_enumerate()?
-    } else {
-        HidApi::new()?
-    };
-    if displays.len() <= 0 {
-        displays = list_displays_hapi(&hapi)?;
-    }
+    let hapi = HidApi::new()?;
+    let displays = studio_displays(&hapi)?;
     if displays.len() <= 0 {
         return Err("No Apple Studio Display found")?;
     }
-    let display = displays.first().unwrap().as_str();
-    let dev_path = CString::new(display)?;
-    let mut handle = hapi.open_path(&dev_path)?;
+    let display = displays.first().unwrap();
+    let mut handle = hapi.open_path(display.path())?;
     match matches.subcommand() {
         Some(("get", _)) => {
             let brightness = get_brightness_percent(&mut handle)?;
