@@ -122,11 +122,9 @@ fn cli() -> Command {
                 )
                 .about("Decrease the brightness"),
         )
-        .subcommand(Command::new("udev").about("Show the required UDEV rule"))
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let program_name = cli().get_name().to_owned();
     let matches = cli().get_matches();
     let mut displays = list_displays()?;
     let hapi = if displays.len() > 0 {
@@ -138,10 +136,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         displays = list_displays_hapi(&hapi)?;
     }
     if displays.len() <= 0 {
-        println!(
-            "No Apple Studio Display found. Checkout {} udev for help",
-            program_name
-        );
         return Err("No Apple Studio Display found")?;
     }
     let display = displays.first().unwrap().as_str();
@@ -167,13 +161,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             let brightness = get_brightness_percent(&mut handle)?;
             let new_brightness = std::cmp::min(100, brightness - step);
             set_brightness_percent(&mut handle, new_brightness)?;
-        }
-        Some(("udev", _)) => {
-            println!(
-                "{} requires the following udev rule to work properly",
-                program_name
-            );
-            println!("'SUBSYSTEM==\"hidraw\", DEVPATH==\"*:1.7/[0-9][0-9][0-9][0-9]:05AC:1114.[0-9][0-9][0-9][0-9]/*\", ATTRS{{idVendor}}==\"05ac\", ATTRS{{idProduct}}==\"1114\", MODE=\"0660\", TAG+=\"uaccess\", SYMLINK+=\"asdbl-%s{{serial}}\"'")
         }
         _ => unreachable!(),
     }
