@@ -1,41 +1,48 @@
-=======================================
 Apple Studio Display Brightness Control
-=======================================
-A small command line utility to get or set the brightness level for Apple
-Studio Displays from Linux.
++++++++++++++++++++++++++++++++++++++++
+This small command line utility allows for changing the brightness of one or
+more Apple Studio Display(s) attached to a Linux or Windows PC.
+
+.. code-block::
+
+    Tool to get or set the brightness for Apple Studio Displays
+
+    Usage: asdbctl [OPTIONS] <COMMAND>
+
+    Commands:
+      get   Get the current brightness in %
+      set   Set the current brightness in %
+      up    Increase the brightness
+      down  Decrease the brightness
+      help  Print this message or the help of the given subcommand(s)
+
+    Options:
+      -s, --serial <SERIAL>  Serial number of the display for which to adjust the brightness
+      -h, --help             Print help
 
 Getting started
 ---------------
-The following udev rule should to be present and triggerd:
-
-.. code-block:: udev
-
-    SUBSYSTEM=="hidraw", DEVPATH=="*:1.7/????:05AC:1114.????/*", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1114", MODE="0660", TAG+="uaccess", SYMLINK+="asdbl-%s{serial}"
-
-Use this command to create it on your system. Reboot your system and if your
-Studio Display is connected, you should find a symlink under `/dev/` with the
-prefix ``asdbl-`` and the serial number of your display.
-
-.. code-block:: bash
-
-   echo 'SUBSYSTEM=="hidraw", DEVPATH=="*:1.7/????:05AC:1114.????/*", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1114", MODE="0660", TAG+="uaccess", SYMLINK+="asdbl-%s{serial}"' | sudo tee /etc/udev/rules.d/20-asd-backlight.rules
-
-The software is written in Rust and uses `hidapi` in the background. There are
-no binary releases, which means you will need to install Rust (or rewrite it in
-C).
+Prebuild releases are not available. Only Rust is required to build from source.
 
 .. code-block:: bash
 
     git clone https://github.com/juliuszint/asdbctl.git && cd asdbctl
-    cargo run --release get
-
-    # install with
+    # either just run from here
+    cargo run --release -- help
+    # or install with
     cargo install --path .
 
-Background
-----------
+Troubleshooting
+---------------
+In case regular users are not allowed to access raw HID devices, you can use the
+udev rule in the `rules.d` directory.
+
+Technical details
+-----------------
 Dumping the USB traffic on macOS with Wireshark and setting the proper filters
-will show the USB Control transfers to set the brightness::
+will show the USB Control transfers to set the brightness
+
+.. code-block::
 
     bmRequestType: 0x21
     bRequest     : 0x9
@@ -43,19 +50,21 @@ will show the USB Control transfers to set the brightness::
     wIndex:      : 0x000c
     wLength      : 0x7
 
-with this data package when setting it to the minimum brightness value::
+with this data package when setting it to the minimum brightness value
+
+.. code-block::
 
     [ 0x01, 0x90, 0x01, 0x00, 0x00, 0x00, 0x00 ]
 
-The 0x90 and 0x01 are the brightness value encoded with the least significant
-byte first (LSB).
+The ``0x90`` and ``0x01`` are the brightness value encoded with the least
+significant byte first (LSB).
 
 Its possible to operate the Studio Display in 3 different USB configurations
 and Linux will use the first. This means that the USB interface number for
 controlling the brightness is not ``0xc`` (extracted from the dump) but ``0x7``.
 
 Decoded HID Report Descriptor
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------
 
 .. code-block::
 
@@ -100,7 +109,6 @@ Decoded HID Report Descriptor
     R: 79 05 80 09 01 a1 01 85 01 06 82 00 09 10 16 90 01 27 60 ea 00 00 67 e1 00 00 01 55 0e 75 20 95 01 b1 42 05 0f 09 50 15 00 26 20 4e 66 10 01 55 0d 75 10 b1 42 06 82 00 09 10 16 90 01 27 60 ea 00 00 67 e1 00 00 01 55 0e 75 20 95 01 81 02 c0
     N: device 0:0
     I: 3 0001 0001
-
 
 Related projects
 ----------------
