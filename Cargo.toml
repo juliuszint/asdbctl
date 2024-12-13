@@ -11,3 +11,5 @@ glob = "0.3.1"
 clap = { version = "4.5" }
 clap-num = "1.0.2"
 regex = "1.10.6"
+log = "0.4.22"
+stderrlog = "0.6.0"
