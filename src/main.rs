@@ -1,5 +1,6 @@
 use clap::{arg, Command};
 use hidapi::{self, HidApi};
+use log::*;
 use std::{error::Error, vec::Vec};
 
 const REPORT_ID: u8 = 1;
@@ -71,6 +72,9 @@ fn cli() -> Command {
     Command::new("asdbctl")
         .about("Tool to get or set the brightness for Apple Studio Displays")
         .subcommand_required(true)
+        .arg(
+            arg!(-s --serial <SERIAL> "Serial number of the display for which to adjust the brightness")
+        )
         .subcommand(Command::new("get").about("Get the current brightness in %"))
         .subcommand(
             Command::new("set")
@@ -104,36 +108,51 @@ fn cli() -> Command {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    stderrlog::new().module(module_path!()).init().unwrap();
+
     let matches = cli().get_matches();
     let hapi = HidApi::new()?;
+
     let displays = studio_displays(&hapi)?;
     if displays.len() <= 0 {
-        return Err("No Apple Studio Display found")?;
+        Err("No Apple Studio Display found")?;
     }
-    let display = displays.first().unwrap();
-    let mut handle = hapi.open_path(display.path())?;
-    match matches.subcommand() {
-        Some(("get", _)) => {
-            let brightness = get_brightness_percent(&mut handle)?;
-            println!("brightness {}", brightness);
+
+    for display in displays {
+        let mut handle = hapi.open_path(display.path())?;
+        if let Some(s) = display.serial_number() {
+            info!("Adjusting brightness of {}", s);
         }
-        Some(("set", sub_matches)) => {
-            let brightness = *sub_matches.get_one::<u8>("BRIGHTNESS").expect("required");
-            set_brightness_percent(&mut handle, brightness)?;
+        if let Some(serial) = matches.get_one::<&str>("serial") {
+            if let Some(s) = display.serial_number() {
+                if s != *serial {
+                    continue;
+                }
+            }
         }
-        Some(("up", sub_matches)) => {
-            let step = *sub_matches.get_one::<u8>("step").expect("required");
-            let brightness = get_brightness_percent(&mut handle)?;
-            let new_brightness = std::cmp::min(100, brightness + step);
-            set_brightness_percent(&mut handle, new_brightness)?;
+        match matches.subcommand() {
+            Some(("get", _)) => {
+                let brightness = get_brightness_percent(&mut handle)?;
+                println!("brightness {}", brightness);
+            }
+            Some(("set", sub_matches)) => {
+                let brightness = *sub_matches.get_one::<u8>("BRIGHTNESS").expect("required");
+                set_brightness_percent(&mut handle, brightness)?;
+            }
+            Some(("up", sub_matches)) => {
+                let step = *sub_matches.get_one::<u8>("step").expect("required");
+                let brightness = get_brightness_percent(&mut handle)?;
+                let new_brightness = std::cmp::min(100, brightness + step);
+                set_brightness_percent(&mut handle, new_brightness)?;
+            }
+            Some(("down", sub_matches)) => {
+                let step = *sub_matches.get_one::<u8>("step").expect("required");
+                let brightness = get_brightness_percent(&mut handle)?;
+                let new_brightness = std::cmp::min(100, brightness - step);
+                set_brightness_percent(&mut handle, new_brightness)?;
+            }
+            _ => unreachable!(),
         }
-        Some(("down", sub_matches)) => {
-            let step = *sub_matches.get_one::<u8>("step").expect("required");
-            let brightness = get_brightness_percent(&mut handle)?;
-            let new_brightness = std::cmp::min(100, brightness - step);
-            set_brightness_percent(&mut handle, new_brightness)?;
-        }
-        _ => unreachable!(),
     }
     return Ok(());
 }
