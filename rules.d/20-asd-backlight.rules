@@ -1,1 +1,1 @@
-SUBSYSTEM=="hidraw", DEVPATH=="*:1.7/????:05AC:1114.????/*", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1114", MODE="0660", TAG+="uaccess", SYMLINK+="asdbl-%s{serial}"
+SUBSYSTEM=="hidraw", DEVPATH=="*:1.7/????:05AC:1114.????/*", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1114", MODE="0660", TAG+="uaccess"
