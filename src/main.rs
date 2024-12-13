@@ -75,58 +75,54 @@ fn list_displays_hapi(hapi: &HidApi) -> Result<Vec<String>, Box<dyn Error>> {
     let mut result = Vec::new();
     for d in hapi.device_list() {
         if d.vendor_id() != STUDIO_DISPLAY_VENDOR_ID {
-            continue
+            continue;
         }
         if d.product_id() != STUDIO_DISPLAY_PRODUCT_ID {
-            continue
+            continue;
         }
         if d.interface_number() != STUDIO_DISPLAY_INTERFACE_NR {
-            continue
+            continue;
         }
         result.push(d.path().to_str()?.to_string())
     }
     return Ok(result);
 }
 
-#[rustfmt::skip]
 fn cli() -> Command {
     Command::new("asdbctl")
         .about("Tool to get or set the brightness for Apple Studio Displays")
         .subcommand_required(true)
-        .subcommand(
-            Command::new("get")
-                .about("Get the current brightness in %")
-        )
+        .subcommand(Command::new("get").about("Get the current brightness in %"))
         .subcommand(
             Command::new("set")
                 .about("Set the current brightness in %")
                 .arg(
                     arg!(<BRIGHTNESS> "The remote to target")
-                    .value_parser(clap::value_parser!(u8).range(0..101)))
+                        .value_parser(clap::value_parser!(u8).range(0..101)),
+                )
                 .arg_required_else_help(true),
         )
         .subcommand(
             Command::new("up")
                 .arg(
                     arg!(-s --step <STEP> "Step size in percent")
-                    .required(false)
-                    .default_value("10")
-                    .value_parser(clap::value_parser!(u8).range(1..101)))
-                .about("Increase the brightness")
+                        .required(false)
+                        .default_value("10")
+                        .value_parser(clap::value_parser!(u8).range(1..101)),
+                )
+                .about("Increase the brightness"),
         )
         .subcommand(
             Command::new("down")
                 .arg(
                     arg!(-s --step <STEP> "Step size in percent")
-                    .required(false)
-                    .default_value("10")
-                    .value_parser(clap::value_parser!(u8).range(1..101)))
-                .about("Decrease the brightness")
+                        .required(false)
+                        .default_value("10")
+                        .value_parser(clap::value_parser!(u8).range(1..101)),
+                )
+                .about("Decrease the brightness"),
         )
-        .subcommand(
-            Command::new("udev")
-                .about("Show the required UDEV rule")
-        )
+        .subcommand(Command::new("udev").about("Show the required UDEV rule"))
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -134,9 +130,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let matches = cli().get_matches();
     let mut displays = list_displays()?;
     let hapi = if displays.len() > 0 {
-         HidApi::new_without_enumerate()?
+        HidApi::new_without_enumerate()?
     } else {
-         HidApi::new()?
+        HidApi::new()?
     };
     if displays.len() <= 0 {
         displays = list_displays_hapi(&hapi)?;
