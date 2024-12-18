@@ -75,6 +75,9 @@ fn cli() -> Command {
         .arg(
             arg!(-s --serial <SERIAL> "Serial number of the display for which to adjust the brightness")
         )
+        .arg(
+            arg!(-v --verbose ... "Turn debugging information on")
+        )
         .subcommand(Command::new("get").about("Get the current brightness in %"))
         .subcommand(
             Command::new("set")
@@ -108,9 +111,16 @@ fn cli() -> Command {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    stderrlog::new().module(module_path!()).init().unwrap();
-
     let matches = cli().get_matches();
+    let verbosity = *matches
+        .get_one::<u8>("verbose")
+        .expect("Counts are defaulted") as usize;
+    stderrlog::new()
+        .module(module_path!())
+        .verbosity(verbosity)
+        .init()
+        .unwrap();
+
     let hapi = HidApi::new()?;
 
     let displays = studio_displays(&hapi)?;
@@ -121,9 +131,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     for display in displays {
         let mut handle = hapi.open_path(display.path())?;
         if let Some(s) = display.serial_number() {
-            info!("Adjusting brightness of {}", s);
+            info!("display serial number {}", s);
         }
-        if let Some(serial) = matches.get_one::<&str>("serial") {
+        if let Some(serial) = matches.get_one::<String>("serial") {
             if let Some(s) = display.serial_number() {
                 if s != *serial {
                     continue;
