@@ -50,7 +50,7 @@ fn set_brightness_percent(
     brightness: u8,
 ) -> Result<(), Box<dyn Error>> {
     let nits =
-        (((brightness as f32 / 100.0) * BRIGHTNESS_RANGE as f32) + MIN_BRIGHTNESS as f32) as u32;
+        ((brightness as f32 * BRIGHTNESS_RANGE as f32) / 100.0 + MIN_BRIGHTNESS as f32) as u32;
     let nits = std::cmp::min(nits, MAX_BRIGHTNESS);
     let nits = std::cmp::max(nits, MIN_BRIGHTNESS);
     set_brightness(handle, nits)?;
