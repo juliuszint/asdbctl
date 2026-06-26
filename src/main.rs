@@ -31,13 +31,13 @@ fn get_brightness(handle: &mut hidapi::HidDevice) -> Result<u32, Box<dyn Error>>
         ))?
     }
     let brightness = u32::from_le_bytes(buf[1..5].try_into()?);
-    return Ok(brightness);
+    Ok(brightness)
 }
 
 fn get_brightness_percent(handle: &mut hidapi::HidDevice) -> Result<u8, Box<dyn Error>> {
     let value = (get_brightness(handle)? - MIN_BRIGHTNESS) as f32;
     let value_percent = (value / BRIGHTNESS_RANGE as f32 * 100.0) as u8;
-    return Ok(value_percent);
+    Ok(value_percent)
 }
 
 fn set_brightness(handle: &mut hidapi::HidDevice, brightness: u32) -> Result<(), Box<dyn Error>> {
@@ -45,7 +45,7 @@ fn set_brightness(handle: &mut hidapi::HidDevice, brightness: u32) -> Result<(),
     buf.push(REPORT_ID);
     buf.extend(brightness.to_le_bytes());
     buf.extend(0_u16.to_le_bytes());
-    handle.send_feature_report(&mut buf)?;
+    handle.send_feature_report(&buf)?;
     Ok(())
 }
 
@@ -62,14 +62,14 @@ fn set_brightness_percent(
 }
 
 fn studio_displays(hapi: &HidApi) -> Result<Vec<&hidapi::DeviceInfo>, Box<dyn Error>> {
-    return Ok(hapi
+    Ok(hapi
         .device_list()
         .filter(|x| {
             SD_PRODUCT_IDS.contains(&x.product_id())
                 && x.vendor_id() == SD_VENDOR_ID
                 && x.interface_number() == SD_INTERFACE_NR
         })
-        .collect());
+        .collect())
 }
 
 fn cli() -> Command {
@@ -128,7 +128,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let hapi = HidApi::new()?;
 
     let displays = studio_displays(&hapi)?;
-    if displays.len() <= 0 {
+    if displays.is_empty() {
         Err("No Apple Studio Display found")?;
     }
 
@@ -168,5 +168,5 @@ fn main() -> Result<(), Box<dyn Error>> {
             _ => unreachable!(),
         }
     }
-    return Ok(());
+    Ok(())
 }
