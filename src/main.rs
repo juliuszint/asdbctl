@@ -10,7 +10,15 @@ const MAX_BRIGHTNESS: u32 = 60000;
 const BRIGHTNESS_RANGE: u32 = MAX_BRIGHTNESS - MIN_BRIGHTNESS;
 
 const SD_VENDOR_ID: u16 = 0x05ac;
-const SD_INTERFACE_NR: i32 = 0x7;
+// The brightness feature report lives on the standard USB HID "Monitor"
+// top-level collection (usage page 0x80, usage 0x01). The interface number
+// that collection shows up on isn't stable -- it was hardcoded to 7 (which
+// worked for the original Studio Display) but the Studio Display XDR
+// exposes it as interface 14 instead -- so match on usage page/usage,
+// which is a property of the HID report descriptor itself, not something
+// hidapi derives per-platform/per-device.
+const SD_USAGE_PAGE: u16 = 0x0080;
+const SD_USAGE: u16 = 0x0001;
 const SD_PRODUCT_IDS: [u16; 3] = [
     0x1114, // Studio Display (2022)
     0x1116, // Studio Display XDR (2026)
@@ -67,7 +75,8 @@ fn studio_displays(hapi: &HidApi) -> Result<Vec<&hidapi::DeviceInfo>, Box<dyn Er
         .filter(|x| {
             SD_PRODUCT_IDS.contains(&x.product_id())
                 && x.vendor_id() == SD_VENDOR_ID
-                && x.interface_number() == SD_INTERFACE_NR
+                && x.usage_page() == SD_USAGE_PAGE
+                && x.usage() == SD_USAGE
         })
         .collect())
 }
@@ -82,7 +91,12 @@ fn cli() -> Command {
         .arg(
             arg!(-v --verbose ... "Turn debugging information on")
         )
-        .subcommand(Command::new("get").about("Get the current brightness in %"))
+        .subcommand(
+            Command::new("get").about("Get the current brightness in %").arg(
+                arg!(-r --raw "Print the raw HID feature-report value instead of a percentage")
+                    .required(false),
+            ),
+        )
         .subcommand(
             Command::new("set")
                 .about("Set the current brightness in %")
@@ -91,6 +105,10 @@ fn cli() -> Command {
                         .value_parser(clap::value_parser!(u8).range(0..101)),
                 )
                 .arg_required_else_help(true),
+        )
+        .subcommand(
+            Command::new("list-interfaces")
+                .about("Debug: list every HID interface exposed by connected Apple devices matching the Studio Display vendor ID"),
         )
         .subcommand(
             Command::new("up")
@@ -127,6 +145,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let hapi = HidApi::new()?;
 
+    if matches.subcommand_matches("list-interfaces").is_some() {
+        for x in hapi.device_list().filter(|x| x.vendor_id() == SD_VENDOR_ID) {
+            println!(
+                "product_id=0x{:04x} interface_number={} usage_page=0x{:04x} usage=0x{:04x} path={:?}",
+                x.product_id(),
+                x.interface_number(),
+                x.usage_page(),
+                x.usage(),
+                x.path()
+            );
+        }
+        return Ok(());
+    }
+
     let displays = studio_displays(&hapi)?;
     if displays.is_empty() {
         Err("No Apple Studio Display found")?;
@@ -145,9 +177,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         match matches.subcommand() {
-            Some(("get", _)) => {
-                let brightness = get_brightness_percent(&mut handle)?;
-                println!("brightness {}", brightness);
+            Some(("get", sub_matches)) => {
+                if sub_matches.get_flag("raw") {
+                    let raw = get_brightness(&mut handle)?;
+                    println!("raw {}", raw);
+                } else {
+                    let brightness = get_brightness_percent(&mut handle)?;
+                    println!("brightness {}", brightness);
+                }
             }
             Some(("set", sub_matches)) => {
                 let brightness = *sub_matches.get_one::<u8>("BRIGHTNESS").expect("required");
